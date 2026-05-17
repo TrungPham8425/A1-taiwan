@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Luyện tiếng Trung | Học từ vựng · Ôn tập · Ngữ pháp · Thi A1 · Học pinyin</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .pinyin-table {
+            background: white;
+            border-radius: 28px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        .pinyin-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .pinyin-table th, .pinyin-table td {
+            border: 1px solid #ddd;
+            padding: 10px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.1s;
+        }
+        .pinyin-table th {
+            background: #2a5298;
+            color: white;
+        }
+        .pinyin-table td:hover {
+            background: #ffecb3;
+            transform: scale(1.02);
+        }
+        .pinyin-audio-btn {
+            background: #ffb347;
+            border: none;
+            border-radius: 30px;
+            padding: 4px 12px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+            cursor: pointer;
+        }
+        .tone-section {
+            background: #fef5e7;
+            border-radius: 24px;
+            padding: 16px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .tone-box {
+            display: inline-flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .tone-item {
+            background: white;
+            border-radius: 60px;
+            padding: 8px 20px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .pinyin-quiz {
+            background: #f0f4fa;
+            border-radius: 32px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="data.js"></script>
+<script>
+    // ====================== ỨNG DỤNG CHÍNH ======================
+    let currentView = 'home';
+    let currentLessonId = 1;
+    let selectedLessonIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let reviewQueue = [];
+    let currentReviewIndex = 0;
+    let reviewComplete = false;
+    let reviewCorrectCount = 0;
+    let reviewWrongCount = 0;
+    let currentReviewItem = null;
+    let currentReviewOptions = [];
+    let currentReviewCorrectMeaning = "";
+    let examQuestions = [];
+    let examAnswers = {};
+    let examSubmitted = false;
+    let showPinyin = true;
+
+    // Grammar quiz state
+    let grammarQuizAnswers = {};
+    let grammarQuizSubmitted = false;
+    let grammarQuizQuestions = [];
+
+    // Pinyin practice state
+    let currentPinyinLessonId = 1;
+    let pinyinQuestions = [];      // Mỗi phần tử: { word, correctPinyin, meaning, options }
+    let pinyinAnswers = {};
+    let pinyinSubmitted = false;
+
+    let searchKeyword = '';
+    let searchResults = [];
+
+    // Helper
+    function getVocabFromSelectedLessons() {
+        let allVocab = [];
+        selectedLessonIds.forEach(id => {
+            const lesson = lessons.find(l => l.id === id);
+            if (lesson) allVocab.push(...lesson.vocab);
+        });
+        return allVocab;
+    }
+
+    function resetReview() {
+        reviewQueue = [];
+        currentReviewIndex = 0;
+        reviewComplete = false;
+        reviewCorrectCount = 0;
+        reviewWrongCount = 0;
+        currentReviewItem = null;
+        currentReviewOptions = [];
+        currentReviewCorrectMeaning = "";
+    }
+
+    function startReview() {
+        const allVocab = getVocabFromSelectedLessons();
+        if (allVocab.length === 0) {
+            alert("Vui lòng chọn ít nhất một bài học để ôn tập.");
+            return false;
+        }
+        reviewQueue = [...allVocab].sort(() => 0.5 - Math.random());
+        currentReviewIndex = 0;
+        reviewComplete = false;
+        reviewCorrectCount = 0;
+        reviewWrongCount = 0;
+        currentReviewItem = null;
+        currentReviewOptions = [];
+        return true;
+    }
+
+    function generateOptionsForItem(item, allMeanings) {
+        const otherMeanings = [...new Set(allMeanings.filter(m => m !== item.meaning))];
+        let randomOthers = otherMeanings.sort(() => 0.5 - Math.random()).slice(0, 3);
+        while (randomOthers.length < 3) randomOthers.push("đẹp");
+        let opts = [item.meaning, ...randomOthers];
+        for (let i = opts.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [opts[i], opts[j]] = [opts[j], opts[i]];
+        }
+        return opts;
+    }
+
+    function generateRandomExam() {
+        const examBank = window.buildExamBank();
+        const shuffled = [...examBank].sort(() => 0.5 - Math.random());
+        examQuestions = shuffled.slice(0, 15);
+        examAnswers = {};
+        examSubmitted = false;
+    }
+
+    function getExamScore() {
+        let score = 0;
+        examQuestions.forEach((q, idx) => {
+            if (examAnswers[idx] === q.correct) score++;
+        });
+        return score;
+    }
+
+    function getAnsweredCount() {
+        return Object.keys(examAnswers).length;
+    }
+
+    function searchVocabulary(keyword) {
+        if (!keyword.trim()) return [];
+        const lowerKw = keyword.toLowerCase();
+        const results = [];
+        lessons.forEach(lesson => {
+            lesson.vocab.forEach(v => {
+                if (v.word.toLowerCase().includes(lowerKw) ||
+                    v.pinyin.toLowerCase().includes(lowerKw) ||
+                    v.meaning.toLowerCase().includes(lowerKw)) {
+                    results.push({ ...v, lessonTitle: lesson.title, lessonId: lesson.id });
+                }
+            });
+        });
+        return results;
+    }
+
+    function showMeme() {
+        const memeDiv = document.createElement('div');
+        memeDiv.className = 'meme-box';
+        memeDiv.innerHTML = `
+            🐶⚾️🔨 <strong>SAI RỒI!</strong> 🔨⚾️🐶<br>
+            <span style="font-size:1rem;">Chó con gậy bóng chày: "Học lại đi bạn ơi!"</span>
+        `;
+        const reviewArea = document.getElementById('reviewArea');
+        const oldFeedback = document.getElementById('reviewFeedback');
+        if (oldFeedback) oldFeedback.appendChild(memeDiv);
+        else if (reviewArea) reviewArea.appendChild(memeDiv);
+        setTimeout(() => {
+            if (memeDiv && memeDiv.remove) memeDiv.remove();
+        }, 1500);
+    }
+
+    // Grammar quiz functions
+    function loadGrammarQuiz() {
+        grammarQuizQuestions = window.getGrammarQuestions(currentLessonId) || [];
+        grammarQuizAnswers = {};
+        grammarQuizSubmitted = false;
+    }
+
+    function getGrammarQuizScore() {
+        let score = 0;
+        grammarQuizQuestions.forEach((q, idx) => {
+            if (grammarQuizAnswers[idx] === q.correct) score++;
+        });
+        return score;
+    }
+
+    // Pinyin functions
+    function generatePinyinQuestions(lessonId) {
+        const lesson = lessons.find(l => l.id === lessonId);
+        if (!lesson || !lesson.vocab.length) return [];
+        // Lấy toàn bộ từ vựng của bài, trộn ngẫu nhiên, lấy tối đa 10 câu
+        const shuffled = [...lesson.vocab].sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, 10);
+        // Tạo options cố định cho mỗi câu: 1 đúng + 3 sai lấy từ pinyin của các từ khác trong cùng bài
+        return selected.map(v => {
+            const otherPinyin = lesson.vocab.filter(item => item.word !== v.word).map(item => item.pinyin);
+            let opts = [v.pinyin];
+            let randomOthers = [...new Set(otherPinyin)].sort(() => 0.5 - Math.random()).slice(0, 3);
+            while (randomOthers.length < 3) randomOthers.push("nǐ hǎo");
+            opts = [...opts, ...randomOthers];
+            // Trộn thứ tự options
+            for (let i = opts.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [opts[i], opts[j]] = [opts[j], opts[i]];
+            }
+            return {
+                word: v.word,
+                correctPinyin: v.pinyin,
+                meaning: v.meaning,
+                options: opts
+            };
+        });
+    }
+
+    function resetPinyinQuiz() {
+        pinyinQuestions = generatePinyinQuestions(currentPinyinLessonId);
+        pinyinAnswers = {};
+        pinyinSubmitted = false;
+    }
+
+    function getPinyinScore() {
+        let score = 0;
+        pinyinQuestions.forEach((q, idx) => {
+            if (pinyinAnswers[idx] === q.correctPinyin) score++;
+        });
+        return score;
+    }
+
+    // Hàm phát âm pinyin
+    function speakPinyin(text) {
+        if (!window.speechSynthesis) {
+            alert("Trình duyệt của bạn không hỗ trợ đọc giọng.");
+            return;
+        }
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.8;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // Render
+    function render() {
+        const app = document.getElementById('app');
+        if (currentView === 'home') {
+            app.innerHTML = `
+                <div class="app">
+                    <div class="hero">
+                        <h1>📚 Luyện tiếng Trung toàn diện</h1>
+                        <p>Học từ vựng · Ôn tập full từ · Ngữ pháp · Thi thử A1 · Học pinyin</p>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                        <div class="toggle-pinyin">
+                            <span>🔊 Hiển thị Pinyin</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="pinyinToggleHome" ${showPinyin ? 'checked' : ''}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="search-area">
+                            <input type="text" id="searchInput" placeholder="🔍 Tìm từ (tiếng Trung, pinyin, nghĩa) ..." value="${searchKeyword.replace(/"/g, '&quot;')}">
+                            <button id="searchBtn">Tìm</button>
+                        </div>
+                    </div>
+                    <div id="searchResults" class="search-results" style="display: ${searchResults.length ? 'block' : 'none'}">
+                        ${searchResults.map(r => `
+                            <div class="search-item" data-word="${r.word}" data-lesson="${r.lessonId}">
+                                <strong>${r.word}</strong> ${showPinyin ? `(${r.pinyin})` : ''}<br>
+                                <span>📖 ${r.meaning}</span><br>
+                                <small>📘 ${r.lessonTitle}</small>
+                            </div>
+                        `).join('')}
+                        ${searchResults.length === 0 && searchKeyword ? '<div>Không tìm thấy từ nào. Hãy thử từ khác.</div>' : ''}
+                    </div>
+                    <div class="feature-grid">
+                        <div class="feature-card" data-feature="learn"><div class="feature-icon">📘</div><div class="feature-title">Học từ vựng</div><div class="feature-desc">Xem danh sách từ mới theo bài</div></div>
+                        <div class="feature-card" data-feature="review"><div class="feature-icon">🔁</div><div class="feature-title">Ôn từ vựng</div><div class="feature-desc">Chọn nhiều bài, full từ, hiển thị pinyin</div></div>
+                        <div class="feature-card" data-feature="grammar"><div class="feature-icon">📐</div><div class="feature-title">Luyện ngữ pháp</div><div class="feature-desc">Lý thuyết + bài tập trắc nghiệm</div></div>
+                        <div class="feature-card" data-feature="exam"><div class="feature-icon">📝</div><div class="feature-title">Ôn thi A1</div><div class="feature-desc">Đề thi ngẫu nhiên, chấm điểm</div></div>
+                        <div class="feature-card" data-feature="pinyin"><div class="feature-icon">🎵</div><div class="feature-title">Học pinyin</div><div class="feature-desc">Bảng pinyin + luyện tập theo bài</div></div>
+                    </div>
+                </div>
+            `;
+            const toggle = document.getElementById('pinyinToggleHome');
+            if (toggle) {
+                toggle.addEventListener('change', (e) => {
+                    showPinyin = e.target.checked;
+                    render();
+                });
+            }
+            const searchBtn = document.getElementById('searchBtn');
+            const searchInput = document.getElementById('searchInput');
+            if (searchBtn) {
+                searchBtn.addEventListener('click', () => {
+                    searchKeyword = searchInput.value;
+                    searchResults = searchVocabulary(searchKeyword);
+                    render();
+                });
+                searchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        searchKeyword = searchInput.value;
+                        searchResults = searchVocabulary(searchKeyword);
+                        render();
+                    }
+                });
+            }
+            document.querySelectorAll('.search-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const lessonId = parseInt(item.dataset.lesson);
+                    if (!isNaN(lessonId)) {
+                        currentLessonId = lessonId;
+                        currentView = 'learn';
+                        render();
+                    }
+                });
+            });
+            document.querySelectorAll('.feature-card').forEach(card => {
+                card.addEventListener('click', (e) => {
+                    const feature = card.dataset.feature;
+                    if (feature === 'learn') { currentView = 'learn'; render(); }
+                    else if (feature === 'review') { currentView = 'review'; resetReview(); render(); }
+                    else if (feature === 'grammar') { currentView = 'grammar'; loadGrammarQuiz(); render(); }
+                    else if (feature === 'exam') { currentView = 'exam'; generateRandomExam(); render(); }
+                    else if (feature === 'pinyin') { currentView = 'pinyin'; resetPinyinQuiz(); render(); }
+                });
+            });
+        }
+        else if (currentView === 'learn') {
+            const lesson = lessons.find(l => l.id === currentLessonId);
+            if (!lesson) return;
+            let lessonButtons = '';
+            lessons.forEach(l => {
+                lessonButtons += `<button class="lesson-btn ${l.id === currentLessonId ? 'active' : ''}" data-id="${l.id}">${l.title}</button>`;
+            });
+            let vocabHtml = '';
+            lesson.vocab.forEach(v => {
+                vocabHtml += `
+                    <div class="vocab-card">
+                        <div class="chinese-word">${v.word}</div>
+                        ${showPinyin ? `<div class="pinyin">${v.pinyin}</div>` : ''}
+                        <div class="meaning">${v.meaning}</div>
+                    </div>
+                `;
+            });
+            app.innerHTML = `
+                <div class="app">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <button class="back-btn" id="backHome">← Quay lại trang chủ</button>
+                        <div class="toggle-pinyin">
+                            <span>🔊 Pinyin</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="pinyinToggleLearn" ${showPinyin ? 'checked' : ''}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="lesson-selector">${lessonButtons}</div>
+                    <h2>📖 ${lesson.title} - Từ vựng</h2>
+                    <div class="vocab-grid">${vocabHtml}</div>
+                </div>
+            `;
+            document.getElementById('backHome').addEventListener('click', () => { currentView = 'home'; render(); });
+            const toggleLearn = document.getElementById('pinyinToggleLearn');
+            if (toggleLearn) {
+                toggleLearn.addEventListener('change', (e) => {
+                    showPinyin = e.target.checked;
+                    render();
+                });
+            }
+            document.querySelectorAll('.lesson-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentLessonId = parseInt(btn.dataset.id);
+                    render();
+                });
+            });
+        }
+        else if (currentView === 'review') {
+            let checkboxesHtml = '';
+            lessons.forEach(lesson => {
+                const checked = selectedLessonIds.includes(lesson.id) ? 'checked' : '';
+                checkboxesHtml += `
+                    <label>
+                        <input type="checkbox" value="${lesson.id}" ${checked} class="lesson-checkbox-input"> ${lesson.title}
+                    </label>
+                `;
+            });
+            app.innerHTML = `
+                <div class="app">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <button class="back-btn" id="backHome">← Quay lại</button>
+                        <div class="toggle-pinyin">
+                            <span>🔊 Pinyin</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="pinyinToggleReview" ${showPinyin ? 'checked' : ''}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="lesson-checkbox" id="lessonCheckboxArea">
+                        ${checkboxesHtml}
+                    </div>
+                    <div style="text-align:center; margin-bottom:20px;">
+                        <button id="updateSelectionBtn">Cập nhật bài học & Bắt đầu ôn</button>
+                    </div>
+                    <div id="reviewArea"></div>
+                </div>
+            `;
+            document.getElementById('backHome').addEventListener('click', () => { currentView = 'home'; render(); });
+            const toggleReview = document.getElementById('pinyinToggleReview');
+            if (toggleReview) {
+                toggleReview.addEventListener('change', (e) => {
+                    showPinyin = e.target.checked;
+                    render();
+                });
+            }
+            const updateBtn = document.getElementById('updateSelectionBtn');
+            updateBtn.addEventListener('click', () => {
+                const checkboxes = document.querySelectorAll('.lesson-checkbox-input');
+                selectedLessonIds = [];
+                checkboxes.forEach(cb => {
+                    if (cb.checked) selectedLessonIds.push(parseInt(cb.value));
+                });
+                if (selectedLessonIds.length === 0) {
+                    alert("Vui lòng chọn ít nhất một bài để ôn tập.");
+                    return;
+                }
+                resetReview();
+                startReview();
+                render();
+            });
+            const reviewArea = document.getElementById('reviewArea');
+            if (!reviewQueue.length && !reviewComplete) {
+                reviewArea.innerHTML = `<div style="text-align:center; margin-top:40px;"><p>Chọn bài học và nhấn "Cập nhật bài học & Bắt đầu ôn"</p></div>`;
+            } else if (reviewComplete) {
+                const totalWords = getVocabFromSelectedLessons().length;
+                reviewArea.innerHTML = `
+                    <div class="counter-bar">
+                        <span>✅ Đúng: ${reviewCorrectCount}</span>
+                        <span>❌ Sai: ${reviewWrongCount}</span>
+                        <span>📊 Tổng: ${totalWords}</span>
+                    </div>
+                    <div style="text-align:center; margin-top:40px; background:#d4edda; padding:20px; border-radius:40px;">
+                        🎉 Chúc mừng! Bạn đã ôn thuộc toàn bộ ${totalWords} từ vựng từ các bài đã chọn.
+                        <br><button id="reviewAgainBtn">Ôn lại (cùng bài)</button>
+                    </div>
+                `;
+                document.getElementById('reviewAgainBtn')?.addEventListener('click', () => {
+                    startReview();
+                    render();
+                });
+            } else if (reviewQueue.length > 0 && currentReviewIndex < reviewQueue.length) {
+                const item = reviewQueue[currentReviewIndex];
+                let opts = [];
+                if (currentReviewItem === item && currentReviewOptions.length > 0) {
+                    opts = currentReviewOptions;
+                } else {
+                    const allMeanings = getVocabFromSelectedLessons().map(v => v.meaning);
+                    opts = generateOptionsForItem(item, allMeanings);
+                    currentReviewItem = item;
+                    currentReviewOptions = opts;
+                    currentReviewCorrectMeaning = item.meaning;
+                }
+                let optsHtml = '';
+                opts.forEach((opt, idx) => {
+                    optsHtml += `<div class="opt-btn" data-opt="${idx}">${String.fromCharCode(65+idx)}. ${opt}</div>`;
+                });
+                reviewArea.innerHTML = `
+                    <div class="counter-bar">
+                        <span>✅ Đúng: ${reviewCorrectCount}</span>
+                        <span>❌ Sai: ${reviewWrongCount}</span>
+                        <span>📊 Đã ôn: ${currentReviewIndex} / ${reviewQueue.length}</span>
+                    </div>
+                    <div class="quiz-card">
+                        <div class="question-word">${item.word}</div>
+                        ${showPinyin ? `<div class="question-pinyin">📢 ${item.pinyin}</div>` : ''}
+                        <div class="options-area">${optsHtml}</div>
+                        <div id="reviewFeedback"></div>
+                        <div class="progress-text">Còn lại ${reviewQueue.length - currentReviewIndex} từ (tổng ${reviewQueue.length})</div>
+                    </div>
+                `;
+                document.querySelectorAll('.opt-btn').forEach(optEl => {
+                    optEl.addEventListener('click', (e) => {
+                        const selectedIdx = parseInt(optEl.dataset.opt);
+                        const selectedMeaning = opts[selectedIdx];
+                        const isCorrect = (selectedMeaning === currentReviewCorrectMeaning);
+                        const feedbackDiv = document.getElementById('reviewFeedback');
+                        if (isCorrect) {
+                            reviewCorrectCount++;
+                            feedbackDiv.innerHTML = '<div class="feedback-msg correct-fb">✅ Chính xác! Tiếp tục...</div>';
+                            currentReviewItem = null;
+                            currentReviewOptions = [];
+                            setTimeout(() => {
+                                if (currentReviewIndex + 1 < reviewQueue.length) {
+                                    currentReviewIndex++;
+                                    render();
+                                } else {
+                                    reviewComplete = true;
+                                    render();
+                                }
+                            }, 800);
+                        } else {
+                            reviewWrongCount++;
+                            showMeme();
+                            feedbackDiv.innerHTML = '<div class="feedback-msg wrong-fb">❌ Sai rồi! Từ này sẽ được lặp lại. Ghi nhớ pinyin và nghĩa.</div>';
+                            setTimeout(() => {
+                                const wrongItem = reviewQueue[currentReviewIndex];
+                                reviewQueue.splice(currentReviewIndex, 1);
+                                reviewQueue.push(wrongItem);
+                                currentReviewItem = null;
+                                currentReviewOptions = [];
+                                render();
+                            }, 1500);
+                        }
+                    });
+                });
+            }
+        }
+        else if (currentView === 'grammar') {
+            const lesson = lessons.find(l => l.id === currentLessonId);
+            let lessonButtons = '';
+            lessons.forEach(l => {
+                lessonButtons += `<button class="lesson-btn ${l.id === currentLessonId ? 'active' : ''}" data-id="${l.id}">${l.title}</button>`;
+            });
+            let grammarTheoryHtml = '';
+            lesson.grammar.forEach(g => {
+                grammarTheoryHtml += `
+                    <div class="grammar-item">
+                        <div class="grammar-title">📌 ${g.title}</div>
+                        <div class="grammar-struct">${g.struct}</div>
+                        <div class="grammar-ex">💬 Ví dụ: ${g.example}</div>
+                    </div>
+                `;
+            });
+            let quizHtml = '';
+            if (grammarQuizQuestions.length > 0) {
+                quizHtml = `<div class="grammar-quiz-section">
+                    <h3>📝 Bài tập ngữ pháp</h3>
+                    ${grammarQuizQuestions.map((q, idx) => `
+                        <div class="grammar-question">
+                            <div><strong>Câu ${idx+1}:</strong> ${q.text}</div>
+                            <div>
+                                ${q.options.map((opt, optIdx) => `
+                                    <div class="quiz-option ${grammarQuizAnswers[idx] === optIdx ? 'selected' : ''}" data-qidx="${idx}" data-optidx="${optIdx}">
+                                        ${String.fromCharCode(65+optIdx)}. ${opt}
+                                    </div>
+                                `).join('')}
+                            </div>
+                            ${grammarQuizSubmitted ? `<div style="margin-top:8px; font-size:0.85rem; color:${grammarQuizAnswers[idx] === q.correct ? '#2e7d32' : '#c62828'}">
+                                ${grammarQuizAnswers[idx] === q.correct ? '✓ Đúng' : `✗ Sai. Đáp án: ${q.options[q.correct]}`}
+                            </div>` : ''}
+                        </div>
+                    `).join('')}
+                    <div class="grammar-quiz-result">
+                        ${!grammarQuizSubmitted ? 
+                            `<button id="submitGrammarBtn">Nộp bài</button>` : 
+                            `<div><strong>Điểm số: ${getGrammarQuizScore()} / ${grammarQuizQuestions.length}</strong> 
+                             <button id="resetGrammarBtn">Làm lại</button></div>`}
+                    </div>
+                </div>`;
+            } else {
+                quizHtml = `<div class="grammar-quiz-section"><p>Chưa có bài tập cho bài này.</p></div>`;
+            }
+            app.innerHTML = `
+                <div class="app">
+                    <button class="back-btn" id="backHome">← Quay lại</button>
+                    <div class="lesson-selector">${lessonButtons}</div>
+                    <h2>✍️ Ngữ pháp - ${lesson.title}</h2>
+                    <div class="grammar-list">${grammarTheoryHtml}</div>
+                    ${quizHtml}
+                </div>
+            `;
+            document.getElementById('backHome').addEventListener('click', () => { currentView = 'home'; render(); });
+            document.querySelectorAll('.lesson-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentLessonId = parseInt(btn.dataset.id);
+                    loadGrammarQuiz();
+                    render();
+                });
+            });
+            document.querySelectorAll('.quiz-option').forEach(opt => {
+                opt.addEventListener('click', (e) => {
+                    if (grammarQuizSubmitted) return;
+                    const qidx = parseInt(opt.dataset.qidx);
+                    const optidx = parseInt(opt.dataset.optidx);
+                    grammarQuizAnswers[qidx] = optidx;
+                    render();
+                });
+            });
+            const submitBtn = document.getElementById('submitGrammarBtn');
+            if (submitBtn) {
+                submitBtn.addEventListener('click', () => {
+                    grammarQuizSubmitted = true;
+                    render();
+                });
+            }
+            const resetBtn = document.getElementById('resetGrammarBtn');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    grammarQuizSubmitted = false;
+                    grammarQuizAnswers = {};
+                    render();
+                });
+            }
+        }
+        else if (currentView === 'exam') {
+            let examHtml = '';
+            examQuestions.forEach((q, idx) => {
+                let optsHtml = '';
+                q.options.forEach((opt, optIdx) => {
+                    const isSelected = (examAnswers[idx] === optIdx);
+                    optsHtml += `<div class="opt-btn ${isSelected ? 'selected' : ''}" data-qidx="${idx}" data-optidx="${optIdx}">${String.fromCharCode(65+optIdx)}. ${opt}</div>`;
+                });
+                examHtml += `
+                    <div class="exam-question">
+                        <div><strong>Câu ${idx+1}:</strong> ${q.text}</div>
+                        <div class="exam-options">${optsHtml}</div>
+                        ${examSubmitted ? `<div style="margin-top:8px; font-size:0.85rem; color:${examAnswers[idx] === q.correct ? '#2e7d32' : '#c62828'}">${examAnswers[idx] === q.correct ? '✓ Đúng' : `✗ Sai. Đáp án: ${q.options[q.correct]}`}</div>` : ''}
+                    </div>
+                `;
+            });
+            app.innerHTML = `
+                <div class="app">
+                    <button class="back-btn" id="backHome">← Trang chủ</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+                        <h2>📄 Đề thi thử A1 (${examQuestions.length} câu)</h2>
+                        <button class="small" id="newExamBtn">Tạo đề mới</button>
+                    </div>
+                    <div class="progress-exam">
+                        📝 Đã trả lời: ${getAnsweredCount()} / ${examQuestions.length} câu
+                    </div>
+                    <div class="exam-container" id="examContainer">${examHtml}</div>
+                    <div style="margin-top:20px; text-align:center;">
+                        ${!examSubmitted ? '<button id="submitExamBtn">Nộp bài thi</button>' : `<div><strong>Điểm số: ${getExamScore()} / ${examQuestions.length}</strong> <button id="editExamBtn">Sửa lại đáp án</button></div>`}
+                    </div>
+                </div>
+            `;
+            document.getElementById('backHome').addEventListener('click', () => { currentView = 'home'; render(); });
+            document.getElementById('newExamBtn')?.addEventListener('click', () => { generateRandomExam(); render(); });
+            if (!examSubmitted) {
+                document.getElementById('submitExamBtn')?.addEventListener('click', () => { examSubmitted = true; render(); });
+            } else {
+                document.getElementById('editExamBtn')?.addEventListener('click', () => { examSubmitted = false; render(); });
+            }
+            document.querySelectorAll('.opt-btn[data-qidx]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    if (examSubmitted) return;
+                    const qidx = parseInt(btn.dataset.qidx);
+                    const optidx = parseInt(btn.dataset.optidx);
+                    examAnswers[qidx] = optidx;
+                    render();
+                });
+            });
+        }
+        else if (currentView === 'pinyin') {
+            // Tạo danh sách nút chọn bài
+            let lessonButtons = '';
+            lessons.forEach(l => {
+                lessonButtons += `<button class="lesson-btn ${l.id === currentPinyinLessonId ? 'active' : ''}" data-id="${l.id}">${l.title}</button>`;
+            });
+            
+            // Dữ liệu bảng pinyin lý thuyết
+            const initials = ['b','p','m','f','d','t','n','l','g','k','h','j','q','x','zh','ch','sh','r','z','c','s'];
+            const finals = ['a','o','e','i','u','ü','ai','ei','ui','ao','ou','iu','ie','üe','er','an','en','in','un','ün','ang','eng','ing','ong'];
+            const tones = ['mā (1)', 'má (2)', 'mǎ (3)', 'mà (4)', 'ma (nhẹ)'];
+            
+            let quizHtml = '';
+            if (pinyinQuestions.length === 0) {
+                quizHtml = `<div class="pinyin-quiz"><p>Bài học này chưa có từ vựng để luyện pinyin.</p></div>`;
+            } else {
+                const answeredCount = Object.keys(pinyinAnswers).length;
+                quizHtml = `
+                    <div class="pinyin-quiz">
+                        <h3>📝 Luyện tập pinyin (chọn đúng pinyin cho chữ Hán)</h3>
+                        <div class="progress-exam">📊 Đã làm: ${answeredCount} / ${pinyinQuestions.length}</div>
+                        ${pinyinQuestions.map((q, idx) => `
+                            <div class="grammar-question">
+                                <div><strong>Câu ${idx+1}:</strong> Từ <span style="font-size:1.2rem;">${q.word}</span> (${q.meaning}) có pinyin là?</div>
+                                <div>
+                                    ${q.options.map((opt, optIdx) => `
+                                        <div class="quiz-option ${pinyinAnswers[idx] === opt ? 'selected' : ''}" data-qidx="${idx}" data-opt="${opt}">
+                                            ${String.fromCharCode(65+optIdx)}. ${opt}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ${pinyinSubmitted ? `<div style="margin-top:8px; font-size:0.85rem; color:${pinyinAnswers[idx] === q.correctPinyin ? '#2e7d32' : '#c62828'}">
+                                    ${pinyinAnswers[idx] === q.correctPinyin ? '✓ Đúng' : `✗ Sai. Đáp án: ${q.correctPinyin}`}
+                                </div>` : ''}
+                            </div>
+                        `).join('')}
+                        <div class="grammar-quiz-result">
+                            ${!pinyinSubmitted ? 
+                                `<button id="submitPinyinBtn">Nộp bài</button>` : 
+                                `<div><strong>Điểm số: ${getPinyinScore()} / ${pinyinQuestions.length}</strong> 
+                                 <button id="resetPinyinBtn">Làm lại (cùng bài)</button></div>`}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            app.innerHTML = `
+                <div class="app">
+                    <button class="back-btn" id="backHome">← Quay lại</button>
+                    <div class="lesson-selector">${lessonButtons}</div>
+                    <h2>🎵 Học bảng Pinyin tiếng Trung - Bài ${currentPinyinLessonId}</h2>
+                    <div class="tone-section">
+                        <div class="tone-box">
+                            ${tones.map(t => `<div class="tone-item" data-tone="${t.split(' ')[0]}">${t}</div>`).join('')}
+                        </div>
+                    </div>
+                    <div class="pinyin-table">
+                        <h3>Thanh mẫu (Initials)</h3>
+                        <table>
+                            <tr>${initials.map(i => `<td data-pinyin="${i}">${i}<button class="pinyin-audio-btn">🔊</button></td>`).join('')}</tr>
+                        </table>
+                        <h3>Vận mẫu (Finals)</h3>
+                        <table>
+                            ${Array(Math.ceil(finals.length / 6)).fill().map((_, row) => `
+                                <tr>${finals.slice(row*6, row*6+6).map(f => `<td data-pinyin="${f}">${f}<button class="pinyin-audio-btn">🔊</button></td>`).join('')}</tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                    ${quizHtml}
+                </div>
+            `;
+            
+            document.getElementById('backHome').addEventListener('click', () => { currentView = 'home'; render(); });
+            
+            // Gắn sự kiện chọn bài
+            document.querySelectorAll('.lesson-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const newId = parseInt(btn.dataset.id);
+                    if (newId !== currentPinyinLessonId) {
+                        currentPinyinLessonId = newId;
+                        resetPinyinQuiz();
+                        render();
+                    }
+                });
+            });
+            
+            // Gắn sự kiện phát âm pinyin
+            document.querySelectorAll('.pinyin-table td').forEach(cell => {
+                const btn = cell.querySelector('.pinyin-audio-btn');
+                const pinyinText = cell.dataset.pinyin;
+                if (btn) {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        speakPinyin(pinyinText);
+                    });
+                }
+                cell.addEventListener('click', (e) => {
+                    if (e.target !== btn) speakPinyin(pinyinText);
+                });
+            });
+            document.querySelectorAll('.tone-item').forEach(tone => {
+                tone.addEventListener('click', () => {
+                    const toneChar = tone.dataset.tone;
+                    speakPinyin(toneChar);
+                });
+            });
+            
+            // Gắn sự kiện cho bài tập pinyin
+            if (pinyinQuestions.length > 0) {
+                document.querySelectorAll('.quiz-option[data-qidx]').forEach(opt => {
+                    opt.addEventListener('click', (e) => {
+                        if (pinyinSubmitted) return;
+                        const qidx = parseInt(opt.dataset.qidx);
+                        const selectedPinyin = opt.dataset.opt;
+                        pinyinAnswers[qidx] = selectedPinyin;
+                        render();
+                    });
+                });
+                const submitBtn = document.getElementById('submitPinyinBtn');
+                if (submitBtn) {
+                    submitBtn.addEventListener('click', () => {
+                        pinyinSubmitted = true;
+                        render();
+                    });
+                }
+                const resetBtn = document.getElementById('resetPinyinBtn');
+                if (resetBtn) {
+                    resetBtn.addEventListener('click', () => {
+                        resetPinyinQuiz();
+                        render();
+                    });
+                }
+            }
+        }
+    }
+
+    generateRandomExam();
+    render();
+</script>
+</body>
+</html>
