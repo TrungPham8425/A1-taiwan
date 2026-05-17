@@ -844,18 +844,18 @@
                             ${tones.map(t => `<div class="tone-item" data-tone="${t.split(' ')[0]}">${t}</div>`).join('')}
                         </div>
                     </div>
-                    <div class="pinyin-table">
-                        <h3>Thanh mẫu (Initials)</h3>
-                        <table>
-                            <tr>${initials.map(i => `<td data-pinyin="${i}">${i}<button class="pinyin-audio-btn">🔊</button></td>`).join('')}</tr>
-                        </table>
-                        <h3>Vận mẫu (Finals)</h3>
-                        <table>
-                            ${Array(Math.ceil(finals.length / 6)).fill().map((_, row) => `
-                                <tr>${finals.slice(row*6, row*6+6).map(f => `<td data-pinyin="${f}">${f}<button class="pinyin-audio-btn">🔊</button></td>`).join('')}</tr>
-                            `).join('')}
-                        </table>
-                    </div>
+                    // <div class="pinyin-table">
+                    //     <h3>Thanh mẫu (Initials)</h3>
+                    //     <table>
+                    //         <tr>${initials.map(i => `<td data-pinyin="${i}">${i}<button class="pinyin-audio-btn">🔊</button></td>`).join('')}</tr>
+                    //     </table>
+                    //     <h3>Vận mẫu (Finals)</h3>
+                    //     <table>
+                    //         ${Array(Math.ceil(finals.length / 6)).fill().map((_, row) => `
+                    //             <tr>${finals.slice(row*6, row*6+6).map(f => `<td data-pinyin="${f}">${f}<button class="pinyin-audio-btn">🔊</button></td>`).join('')}</tr>
+                    //         `).join('')}
+                    //     </table>
+                    // </div>
                     ${reviewAreaHtml}
                 </div>
             `;
